@@ -1,0 +1,2902 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Learning Tidy Evaluation by Reimplementing {dplyr}</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Daniel Chen @chendaniely" />
+    <meta name="date" content="2021-02-09" />
+    <script src="libs/header-attrs-2.6/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link rel="stylesheet" href="footer-header.css" type="text/css" />
+    <link rel="stylesheet" href="slide-content.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Learning Tidy Evaluation by Reimplementing {<code>dplyr</code>}
+### Daniel Chen <span class="citation">@chendaniely</span>
+### Bureau of Labor Statistics
+### 2021-02-09
+
+---
+
+
+
+
+
+class: inverse
+
+&lt;center&gt;
+&lt;div class="hello"&gt;hi!&lt;/div&gt;
+&lt;/center&gt;
+
+---
+
+class: inverse
+
+# I'm Daniel
+.pull-left[
+.center[
+&lt;img src='./figs/daniel_square-800x800.jpg' style="width:300px;"&gt;&lt;/img&gt;
+]
+
+PhD Student: Virginia Tech (Winter 2021)
+
+- Data Science education &amp; pedagogy
+- Medical, Biomedical, Health Sciences
+- [ds4biomed.tech](https://ds4biomed.tech)
+]
+
+.pull-right[
+-  Inten at RStudio
+  - [`gradethis`](https://github.com/rstudio-education/gradethis)
+  - Code grader for [`learnr`](https://github.com/rstudio/learnr) documents
+- The Carpentries
+  - Instructor
+  - Trainer
+  - Community Maintainer Lead
+- Author:
+&lt;center&gt;
+&lt;img src='./figs/book.jpg' style="width:200px;"&gt;&lt;/img&gt;
+&lt;/center&gt;
+]
+
+---
+
+# Why Tidy Evaluation
+
+1. `{tidyvverse}` compatible functions
+2. Same **user** interface with different backends
+
+But...
+
+1. Easier for the user, harder for the developer.
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Parts of Tidy Evaluation
+
+1. Quasiquotation
+  - Quotation
+2. Quosures
+  - Quotation
+  - Closures
+  - Environments
+3. Data mask
+  - Environments
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Learning Tidy Evaluation
+
+- Using {`dplyr`} as an example
+  - Something we are familiar with
+- Really only using `dplyr::select()`
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# The Famous Penguin Dataset
+
+
+```r
+library(palmerpenguins)
+penguins
+```
+
+```
+## # A tibble: 344 x 8
+##    species island bill_length_mm bill_depth_mm flipper_length_~ body_mass_g
+##    &lt;fct&gt;   &lt;fct&gt;           &lt;dbl&gt;         &lt;dbl&gt;            &lt;int&gt;       &lt;int&gt;
+##  1 Adelie  Torge~           39.1          18.7              181        3750
+##  2 Adelie  Torge~           39.5          17.4              186        3800
+##  3 Adelie  Torge~           40.3          18                195        3250
+##  4 Adelie  Torge~           NA            NA                 NA          NA
+##  5 Adelie  Torge~           36.7          19.3              193        3450
+##  6 Adelie  Torge~           39.3          20.6              190        3650
+##  7 Adelie  Torge~           38.9          17.8              181        3625
+##  8 Adelie  Torge~           39.2          19.6              195        4675
+##  9 Adelie  Torge~           34.1          18.1              193        3475
+## 10 Adelie  Torge~           42            20.2              190        4250
+## # ... with 334 more rows, and 2 more variables: sex &lt;fct&gt;, year &lt;int&gt;
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+class: center, middle, inverse
+
+# Selecting Columns
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Selecting columns: [row, col, drop]
+
+.pull-left[
+
+```r
+head(penguins[, "species"]) # for tibble
+```
+
+```
+## # A tibble: 6 x 1
+##   species
+##   &lt;fct&gt;  
+## 1 Adelie 
+## 2 Adelie 
+## 3 Adelie 
+## 4 Adelie 
+## 5 Adelie 
+## 6 Adelie
+```
+]
+.pull-right[
+
+```r
+head(penguins[, c("species", "island")])
+```
+
+```
+## # A tibble: 6 x 2
+##   species island   
+##   &lt;fct&gt;   &lt;fct&gt;    
+## 1 Adelie  Torgersen
+## 2 Adelie  Torgersen
+## 3 Adelie  Torgersen
+## 4 Adelie  Torgersen
+## 5 Adelie  Torgersen
+## 6 Adelie  Torgersen
+```
+]
+
+
+```r
+head(penguins[, "species", drop = FALSE]) # for data.frame
+```
+
+```
+## # A tibble: 6 x 1
+##   species
+##   &lt;fct&gt;  
+## 1 Adelie 
+## 2 Adelie 
+## 3 Adelie 
+## 4 Adelie 
+## 5 Adelie 
+## 6 Adelie
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+---
+
+# Selecting columns: `$`, `drop=TRUE`
+
+
+```r
+penguins$species
+```
+
+
+```r
+penguins[, "species", drop = TRUE]
+```
+
+```
+##   [1] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##   [8] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [15] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [22] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [29] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [36] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [43] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [50] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [57] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [64] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [71] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [78] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [85] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [92] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+##  [99] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+## [106] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+## [113] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+## [120] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+## [127] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+## [134] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+## [141] Adelie    Adelie    Adelie    Adelie    Adelie    Adelie    Adelie   
+## [148] Adelie    Adelie    Adelie    Adelie    Adelie    Gentoo    Gentoo   
+## [155] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [162] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [169] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [176] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [183] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [190] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [197] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [204] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [211] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [218] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [225] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [232] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [239] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [246] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [253] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [260] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [267] Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo    Gentoo   
+## [274] Gentoo    Gentoo    Gentoo    Chinstrap Chinstrap Chinstrap Chinstrap
+## [281] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [288] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [295] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [302] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [309] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [316] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [323] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [330] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [337] Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap Chinstrap
+## [344] Chinstrap
+## Levels: Adelie Chinstrap Gentoo
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Selecting columns: `base::subset()`
+
+.pull-left[
+
+```r
+base::subset(
+  penguins,
+  select = species)
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+.pull-right[
+
+```r
+base::subset(
+  x = penguins,
+  select = c(species, bill_length_mm))
+```
+
+```
+## # A tibble: 344 x 2
+##    species bill_length_mm
+##    &lt;fct&gt;            &lt;dbl&gt;
+##  1 Adelie            39.1
+##  2 Adelie            39.5
+##  3 Adelie            40.3
+##  4 Adelie            NA  
+##  5 Adelie            36.7
+##  6 Adelie            39.3
+##  7 Adelie            38.9
+##  8 Adelie            39.2
+##  9 Adelie            34.1
+## 10 Adelie            42  
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Selecting columns: `dplyr::select()`
+
+.pull-left[
+
+```r
+dplyr::select(penguins, species)
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+.pull-right[
+
+```r
+penguins %&gt;%
+  dplyr::select(species, bill_length_mm)
+```
+
+```
+## # A tibble: 344 x 2
+##    species bill_length_mm
+##    &lt;fct&gt;            &lt;dbl&gt;
+##  1 Adelie            39.1
+##  2 Adelie            39.5
+##  3 Adelie            40.3
+##  4 Adelie            NA  
+##  5 Adelie            36.7
+##  6 Adelie            39.3
+##  7 Adelie            38.9
+##  8 Adelie            39.2
+##  9 Adelie            34.1
+## 10 Adelie            42  
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Selecting columns: index position
+
+.pull-left[
+
+```r
+penguins[, 1, drop = FALSE]
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+.pull-right[
+
+```r
+penguins[, c(1, 3, 5)]
+```
+
+```
+## # A tibble: 344 x 3
+##    species bill_length_mm flipper_length_mm
+##    &lt;fct&gt;            &lt;dbl&gt;             &lt;int&gt;
+##  1 Adelie            39.1               181
+##  2 Adelie            39.5               186
+##  3 Adelie            40.3               195
+##  4 Adelie            NA                  NA
+##  5 Adelie            36.7               193
+##  6 Adelie            39.3               190
+##  7 Adelie            38.9               181
+##  8 Adelie            39.2               195
+##  9 Adelie            34.1               193
+## 10 Adelie            42                 190
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+class: center, middle, inverse
+
+# Quasiquotation
+
+What is quoting?
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# What is an expression
+
+.pull-left[
+The code you write that R interprets and evaluates
+
+```r
+3 + 3
+```
+
+```
+## [1] 6
+```
+
+Only code you write
+
+```r
+quote(3 + 3)
+```
+
+```
+## 3 + 3
+```
+]
+.pull-right[
+Lazy evaluation: the `3+3` isn't evaluated right away
+
+```r
+ex &lt;- quote(3 + 3)
+ex
+```
+
+```
+## 3 + 3
+```
+
+
+```r
+eval(ex)
+```
+
+```
+## [1] 6
+```
+]
+
+Think of quoting as the strin representation of your code.
+It's not really a string, but it's a reasonable approximation.
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Using {rlang}
+
+.pull-left[
+
+```r
+rlang::expr(3 + 3)
+```
+
+```
+## 3 + 3
+```
+
+
+```r
+ex &lt;- rlang::expr(3 + 3)
+ex
+```
+
+```
+## 3 + 3
+```
+]
+.pull-right[
+
+```r
+eval(ex)
+```
+
+```
+## [1] 6
+```
+
+
+```r
+rlang::eval_tidy(ex)
+```
+
+```
+## [1] 6
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Expressions: call, symbol, constant, pairlist
+
+
+```r
+ex &lt;- quote(3 + 3)
+str(ex)
+```
+
+```
+##  language 3 + 3
+```
+
+
+```r
+ex &lt;- quote(3)
+str(ex)
+```
+
+```
+##  num 3
+```
+
+
+```r
+ex &lt;- quote(species)
+str(ex)
+```
+
+```
+##  symbol species
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Selecting columns
+
+.pull-left[
+Direct string column
+
+```r
+penguins[, "species"]
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+
+.pull-right[
+Passing a variable
+
+
+```r
+col &lt;- "species"
+penguins[, col]
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Selecting columns: Variables need to exist
+
+
+```r
+penguins[, species]
+```
+
+```
+## Error in `[.tbl_df`(penguins, , species): object 'species' not found
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Selecting: tibble specific (tibble)
+
+.pull-left[
+
+```r
+as.name("species")
+```
+
+```
+## species
+```
+]
+
+.pull-right[
+
+```r
+quote(species)
+```
+
+```
+## species
+```
+]
+
+
+.pull-left[
+
+```r
+penguins[, as.name("species")]
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+
+.pull-right[
+
+```r
+penguins[, quote(species)]
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Selecting: tibble specific (data.frame)
+
+
+```r
+iris[, as.name("Species")]
+```
+
+```
+## Error in .subset(x, j): invalid subscript type 'symbol'
+```
+
+
+```r
+iris[, quote(Species)]
+```
+
+```
+## Error in .subset(x, j): invalid subscript type 'symbol'
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# `my_select`: try 1
+
+.pull-left[
+
+```r
+my_select &lt;- function(data, col) {
+  return(
+*   data[, col, drop = FALSE]
+  )
+}
+```
+
+
+```r
+my_select(penguins, "species")
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+
+.pull-right[
+
+```r
+# remeber this is tibble input specific
+my_select(penguins, quote(species))
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+# `my_select`: try 1 needs to quote
+
+
+```r
+my_select(penguins, species)
+```
+
+```
+## Error in `[.tbl_df`(data, , col, drop = FALSE): object 'species' not found
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# `my_select`: try 2
+
+### Oh! I just learned how to quote inputs!
+
+
+```r
+my_select &lt;- function(data, col) {
+  return(
+*   data[, quote(col), drop = FALSE]
+  )
+}
+```
+
+### Nope!
+
+We need a way to capture what the user passed, not the function parameter name.
+
+
+```r
+my_select(penguins, species) # quote passed in col, not species
+```
+
+```
+## Error: Can't subset columns that don't exist.
+## x Column `col` doesn't exist.
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# {rlang} enriched expression
+
+Use `rlang::expr()` to capture expressions outside of a function
+
+Use `rlang::enexpr()` to capture expression **inside** a function
+
+.pull-left[
+
+```r
+ex &lt;- rlang::expr(x)
+ex
+```
+
+```
+## x
+```
+
+
+```r
+fexpr &lt;- function(x) {
+* rlang::expr(x)
+}
+fexpr(hello)
+```
+
+```
+## x
+```
+]
+
+.pull-right[
+
+```r
+fenexpr &lt;- function(x) {
+* rlang::enexpr(x)
+}
+fenexpr(hello)
+```
+
+```
+## hello
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# `my_select`: try 3
+
+.pull-left[
+
+```r
+my_select &lt;- function(data, col) {
+  return(
+*   data[, rlang::enexpr(col), drop = FALSE]
+  )
+}
+```
+
+
+```r
+my_select(penguins, species)
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+
+.pull-right[
+
+```r
+my_select &lt;- function(data, col) {
+* col &lt;- rlang::enexpr(col)
+  return(
+*   data[, col, drop = FALSE]
+  )
+}
+```
+
+
+```r
+my_select(penguins, species)
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# `my_select`: try 3 on `data.frame`
+
+
+```r
+my_select(iris, Species)
+```
+
+```
+## Error in .subset(x, j): invalid subscript type 'symbol'
+```
+
+### Remember how we can select on index positions?
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# `my_select`: try 4
+
+
+```r
+my_select &lt;- function(data, col) {
+  col &lt;- rlang::enexpr(col)
+* idx &lt;- which(names(data) %in% as.character(col)) # create an index
+  return(
+*   data[, idx, drop = FALSE]                      # subset on the index
+  )
+}
+```
+
+.pull-left[
+Works on a `tibble`
+
+```r
+my_select(penguins, species)
+```
+
+```
+## # A tibble: 344 x 1
+##    species
+##    &lt;fct&gt;  
+##  1 Adelie 
+##  2 Adelie 
+##  3 Adelie 
+##  4 Adelie 
+##  5 Adelie 
+##  6 Adelie 
+##  7 Adelie 
+##  8 Adelie 
+##  9 Adelie 
+## 10 Adelie 
+## # ... with 334 more rows
+```
+
+]
+
+.pull-right[
+Works on a `data.frame`
+
+```r
+my_select(iris, Species)
+```
+
+```
+##        Species
+## 1       setosa
+## 2       setosa
+## 3       setosa
+## 4       setosa
+## 5       setosa
+## 6       setosa
+## 7       setosa
+## 8       setosa
+## 9       setosa
+## 10      setosa
+## 11      setosa
+## 12      setosa
+## 13      setosa
+## 14      setosa
+## 15      setosa
+## 16      setosa
+## 17      setosa
+## 18      setosa
+## 19      setosa
+## 20      setosa
+## 21      setosa
+## 22      setosa
+## 23      setosa
+## 24      setosa
+## 25      setosa
+## 26      setosa
+## 27      setosa
+## 28      setosa
+## 29      setosa
+## 30      setosa
+## 31      setosa
+## 32      setosa
+## 33      setosa
+## 34      setosa
+## 35      setosa
+## 36      setosa
+## 37      setosa
+## 38      setosa
+## 39      setosa
+## 40      setosa
+## 41      setosa
+## 42      setosa
+## 43      setosa
+## 44      setosa
+## 45      setosa
+## 46      setosa
+## 47      setosa
+## 48      setosa
+## 49      setosa
+## 50      setosa
+## 51  versicolor
+## 52  versicolor
+## 53  versicolor
+## 54  versicolor
+## 55  versicolor
+## 56  versicolor
+## 57  versicolor
+## 58  versicolor
+## 59  versicolor
+## 60  versicolor
+## 61  versicolor
+## 62  versicolor
+## 63  versicolor
+## 64  versicolor
+## 65  versicolor
+## 66  versicolor
+## 67  versicolor
+## 68  versicolor
+## 69  versicolor
+## 70  versicolor
+## 71  versicolor
+## 72  versicolor
+## 73  versicolor
+## 74  versicolor
+## 75  versicolor
+## 76  versicolor
+## 77  versicolor
+## 78  versicolor
+## 79  versicolor
+## 80  versicolor
+## 81  versicolor
+## 82  versicolor
+## 83  versicolor
+## 84  versicolor
+## 85  versicolor
+## 86  versicolor
+## 87  versicolor
+## 88  versicolor
+## 89  versicolor
+## 90  versicolor
+## 91  versicolor
+## 92  versicolor
+## 93  versicolor
+## 94  versicolor
+## 95  versicolor
+## 96  versicolor
+## 97  versicolor
+## 98  versicolor
+## 99  versicolor
+## 100 versicolor
+## 101  virginica
+## 102  virginica
+## 103  virginica
+## 104  virginica
+## 105  virginica
+## 106  virginica
+## 107  virginica
+## 108  virginica
+## 109  virginica
+## 110  virginica
+## 111  virginica
+## 112  virginica
+## 113  virginica
+## 114  virginica
+## 115  virginica
+## 116  virginica
+## 117  virginica
+## 118  virginica
+## 119  virginica
+## 120  virginica
+## 121  virginica
+## 122  virginica
+## 123  virginica
+## 124  virginica
+## 125  virginica
+## 126  virginica
+## 127  virginica
+## 128  virginica
+## 129  virginica
+## 130  virginica
+## 131  virginica
+## 132  virginica
+## 133  virginica
+## 134  virginica
+## 135  virginica
+## 136  virginica
+## 137  virginica
+## 138  virginica
+## 139  virginica
+## 140  virginica
+## 141  virginica
+## 142  virginica
+## 143  virginica
+## 144  virginica
+## 145  virginica
+## 146  virginica
+## 147  virginica
+## 148  virginica
+## 149  virginica
+## 150  virginica
+```
+
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# `dplyr::select` source code
+
+.pull-left[
+
+```r
+select &lt;- function(.data, ...) {
+  UseMethod("select")
+}
+```
+
+
+```r
+select.data.frame &lt;- function(.data, ...) {
+  loc &lt;- tidyselect::eval_select(expr(c(...)), .data)
+* loc &lt;- ensure_group_vars(loc, .data, notify = TRUE)
+
+* dplyr_col_select(.data, loc, names(loc))
+}
+```
+
+
+```r
+dplyr_col_select &lt;- function(.data, loc, names = NULL) {
+* loc &lt;- vec_as_location(loc, n = ncol(.data), names = names(.data))
+  ...
+  ...
+}
+```
+
+]
+
+.pull-right[
+
+```r
+ensure_group_vars &lt;- function(loc, data, notify = TRUE) {
+* group_loc &lt;- match(group_vars(data), names(data))
+  missing &lt;- setdiff(group_loc, loc)
+
+  if (length(missing) &gt; 0) {
+    vars &lt;- names(data)[missing]
+    if (notify) {
+      inform(glue(
+        "Adding missing grouping variables: ",
+        paste0("`", names(data)[missing], "`", collapse = ", ")
+      ))
+    }
+    loc &lt;- c(set_names(missing, vars), loc)
+  }
+
+  loc
+}
+```
+
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# `my_selct`: try 5: more variables `...`
+
+`enexpr` for a single variable, `enxprs` for multiple variables
+
+
+```r
+my_select &lt;- function(data, ...) {
+* cols &lt;- rlang::enexprs(...)                      # the "s" for plural = multiple things
+* cols_char &lt;- as.vector(cols, mode = "character")
+  idx &lt;- which(names(data) %in% cols_char)
+  return(
+    data[, idx, drop = FALSE]
+  )
+}
+```
+
+.pull-left[
+
+```r
+my_select(penguins, species, year, island)
+```
+
+```
+## # A tibble: 344 x 3
+##    species island     year
+##    &lt;fct&gt;   &lt;fct&gt;     &lt;int&gt;
+##  1 Adelie  Torgersen  2007
+##  2 Adelie  Torgersen  2007
+##  3 Adelie  Torgersen  2007
+##  4 Adelie  Torgersen  2007
+##  5 Adelie  Torgersen  2007
+##  6 Adelie  Torgersen  2007
+##  7 Adelie  Torgersen  2007
+##  8 Adelie  Torgersen  2007
+##  9 Adelie  Torgersen  2007
+## 10 Adelie  Torgersen  2007
+## # ... with 334 more rows
+```
+]
+.pull-right[
+
+```r
+my_select(iris, Species, Petal.Width)
+```
+
+```
+##     Petal.Width    Species
+## 1           0.2     setosa
+## 2           0.2     setosa
+## 3           0.2     setosa
+## 4           0.2     setosa
+## 5           0.2     setosa
+## 6           0.4     setosa
+## 7           0.3     setosa
+## 8           0.2     setosa
+## 9           0.2     setosa
+## 10          0.1     setosa
+## 11          0.2     setosa
+## 12          0.2     setosa
+## 13          0.1     setosa
+## 14          0.1     setosa
+## 15          0.2     setosa
+## 16          0.4     setosa
+## 17          0.4     setosa
+## 18          0.3     setosa
+## 19          0.3     setosa
+## 20          0.3     setosa
+## 21          0.2     setosa
+## 22          0.4     setosa
+## 23          0.2     setosa
+## 24          0.5     setosa
+## 25          0.2     setosa
+## 26          0.2     setosa
+## 27          0.4     setosa
+## 28          0.2     setosa
+## 29          0.2     setosa
+## 30          0.2     setosa
+## 31          0.2     setosa
+## 32          0.4     setosa
+## 33          0.1     setosa
+## 34          0.2     setosa
+## 35          0.2     setosa
+## 36          0.2     setosa
+## 37          0.2     setosa
+## 38          0.1     setosa
+## 39          0.2     setosa
+## 40          0.2     setosa
+## 41          0.3     setosa
+## 42          0.3     setosa
+## 43          0.2     setosa
+## 44          0.6     setosa
+## 45          0.4     setosa
+## 46          0.3     setosa
+## 47          0.2     setosa
+## 48          0.2     setosa
+## 49          0.2     setosa
+## 50          0.2     setosa
+## 51          1.4 versicolor
+## 52          1.5 versicolor
+## 53          1.5 versicolor
+## 54          1.3 versicolor
+## 55          1.5 versicolor
+## 56          1.3 versicolor
+## 57          1.6 versicolor
+## 58          1.0 versicolor
+## 59          1.3 versicolor
+## 60          1.4 versicolor
+## 61          1.0 versicolor
+## 62          1.5 versicolor
+## 63          1.0 versicolor
+## 64          1.4 versicolor
+## 65          1.3 versicolor
+## 66          1.4 versicolor
+## 67          1.5 versicolor
+## 68          1.0 versicolor
+## 69          1.5 versicolor
+## 70          1.1 versicolor
+## 71          1.8 versicolor
+## 72          1.3 versicolor
+## 73          1.5 versicolor
+## 74          1.2 versicolor
+## 75          1.3 versicolor
+## 76          1.4 versicolor
+## 77          1.4 versicolor
+## 78          1.7 versicolor
+## 79          1.5 versicolor
+## 80          1.0 versicolor
+## 81          1.1 versicolor
+## 82          1.0 versicolor
+## 83          1.2 versicolor
+## 84          1.6 versicolor
+## 85          1.5 versicolor
+## 86          1.6 versicolor
+## 87          1.5 versicolor
+## 88          1.3 versicolor
+## 89          1.3 versicolor
+## 90          1.3 versicolor
+## 91          1.2 versicolor
+## 92          1.4 versicolor
+## 93          1.2 versicolor
+## 94          1.0 versicolor
+## 95          1.3 versicolor
+## 96          1.2 versicolor
+## 97          1.3 versicolor
+## 98          1.3 versicolor
+## 99          1.1 versicolor
+## 100         1.3 versicolor
+## 101         2.5  virginica
+## 102         1.9  virginica
+## 103         2.1  virginica
+## 104         1.8  virginica
+## 105         2.2  virginica
+## 106         2.1  virginica
+## 107         1.7  virginica
+## 108         1.8  virginica
+## 109         1.8  virginica
+## 110         2.5  virginica
+## 111         2.0  virginica
+## 112         1.9  virginica
+## 113         2.1  virginica
+## 114         2.0  virginica
+## 115         2.4  virginica
+## 116         2.3  virginica
+## 117         1.8  virginica
+## 118         2.2  virginica
+## 119         2.3  virginica
+## 120         1.5  virginica
+## 121         2.3  virginica
+## 122         2.0  virginica
+## 123         2.0  virginica
+## 124         1.8  virginica
+## 125         2.1  virginica
+## 126         1.8  virginica
+## 127         1.8  virginica
+## 128         1.8  virginica
+## 129         2.1  virginica
+## 130         1.6  virginica
+## 131         1.9  virginica
+## 132         2.0  virginica
+## 133         2.2  virginica
+## 134         1.5  virginica
+## 135         1.4  virginica
+## 136         2.3  virginica
+## 137         2.4  virginica
+## 138         1.8  virginica
+## 139         1.8  virginica
+## 140         2.1  virginica
+## 141         2.4  virginica
+## 142         2.3  virginica
+## 143         1.9  virginica
+## 144         2.3  virginica
+## 145         2.5  virginica
+## 146         2.3  virginica
+## 147         1.9  virginica
+## 148         2.0  virginica
+## 149         2.3  virginica
+## 150         1.8  virginica
+```
+
+]
+
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# `my_select`: try 6: `match` not `which`
+
+
+```r
+my_select &lt;- function(data, ...) {
+  cols &lt;- rlang::enexprs(...)
+  cols_char &lt;- as.vector(cols, mode = "character")
+* idx &lt;- match(cols_char, names(data))
+  return(
+    data[, idx, drop = FALSE]
+  )
+}
+```
+
+.pull-left[
+
+```r
+my_select(penguins, species, year, island)
+```
+
+```
+## # A tibble: 344 x 3
+##    species  year island   
+##    &lt;fct&gt;   &lt;int&gt; &lt;fct&gt;    
+##  1 Adelie   2007 Torgersen
+##  2 Adelie   2007 Torgersen
+##  3 Adelie   2007 Torgersen
+##  4 Adelie   2007 Torgersen
+##  5 Adelie   2007 Torgersen
+##  6 Adelie   2007 Torgersen
+##  7 Adelie   2007 Torgersen
+##  8 Adelie   2007 Torgersen
+##  9 Adelie   2007 Torgersen
+## 10 Adelie   2007 Torgersen
+## # ... with 334 more rows
+```
+]
+.pull-right[
+
+```r
+my_select(iris, Species, Petal.Width)
+```
+
+```
+##        Species Petal.Width
+## 1       setosa         0.2
+## 2       setosa         0.2
+## 3       setosa         0.2
+## 4       setosa         0.2
+## 5       setosa         0.2
+## 6       setosa         0.4
+## 7       setosa         0.3
+## 8       setosa         0.2
+## 9       setosa         0.2
+## 10      setosa         0.1
+## 11      setosa         0.2
+## 12      setosa         0.2
+## 13      setosa         0.1
+## 14      setosa         0.1
+## 15      setosa         0.2
+## 16      setosa         0.4
+## 17      setosa         0.4
+## 18      setosa         0.3
+## 19      setosa         0.3
+## 20      setosa         0.3
+## 21      setosa         0.2
+## 22      setosa         0.4
+## 23      setosa         0.2
+## 24      setosa         0.5
+## 25      setosa         0.2
+## 26      setosa         0.2
+## 27      setosa         0.4
+## 28      setosa         0.2
+## 29      setosa         0.2
+## 30      setosa         0.2
+## 31      setosa         0.2
+## 32      setosa         0.4
+## 33      setosa         0.1
+## 34      setosa         0.2
+## 35      setosa         0.2
+## 36      setosa         0.2
+## 37      setosa         0.2
+## 38      setosa         0.1
+## 39      setosa         0.2
+## 40      setosa         0.2
+## 41      setosa         0.3
+## 42      setosa         0.3
+## 43      setosa         0.2
+## 44      setosa         0.6
+## 45      setosa         0.4
+## 46      setosa         0.3
+## 47      setosa         0.2
+## 48      setosa         0.2
+## 49      setosa         0.2
+## 50      setosa         0.2
+## 51  versicolor         1.4
+## 52  versicolor         1.5
+## 53  versicolor         1.5
+## 54  versicolor         1.3
+## 55  versicolor         1.5
+## 56  versicolor         1.3
+## 57  versicolor         1.6
+## 58  versicolor         1.0
+## 59  versicolor         1.3
+## 60  versicolor         1.4
+## 61  versicolor         1.0
+## 62  versicolor         1.5
+## 63  versicolor         1.0
+## 64  versicolor         1.4
+## 65  versicolor         1.3
+## 66  versicolor         1.4
+## 67  versicolor         1.5
+## 68  versicolor         1.0
+## 69  versicolor         1.5
+## 70  versicolor         1.1
+## 71  versicolor         1.8
+## 72  versicolor         1.3
+## 73  versicolor         1.5
+## 74  versicolor         1.2
+## 75  versicolor         1.3
+## 76  versicolor         1.4
+## 77  versicolor         1.4
+## 78  versicolor         1.7
+## 79  versicolor         1.5
+## 80  versicolor         1.0
+## 81  versicolor         1.1
+## 82  versicolor         1.0
+## 83  versicolor         1.2
+## 84  versicolor         1.6
+## 85  versicolor         1.5
+## 86  versicolor         1.6
+## 87  versicolor         1.5
+## 88  versicolor         1.3
+## 89  versicolor         1.3
+## 90  versicolor         1.3
+## 91  versicolor         1.2
+## 92  versicolor         1.4
+## 93  versicolor         1.2
+## 94  versicolor         1.0
+## 95  versicolor         1.3
+## 96  versicolor         1.2
+## 97  versicolor         1.3
+## 98  versicolor         1.3
+## 99  versicolor         1.1
+## 100 versicolor         1.3
+## 101  virginica         2.5
+## 102  virginica         1.9
+## 103  virginica         2.1
+## 104  virginica         1.8
+## 105  virginica         2.2
+## 106  virginica         2.1
+## 107  virginica         1.7
+## 108  virginica         1.8
+## 109  virginica         1.8
+## 110  virginica         2.5
+## 111  virginica         2.0
+## 112  virginica         1.9
+## 113  virginica         2.1
+## 114  virginica         2.0
+## 115  virginica         2.4
+## 116  virginica         2.3
+## 117  virginica         1.8
+## 118  virginica         2.2
+## 119  virginica         2.3
+## 120  virginica         1.5
+## 121  virginica         2.3
+## 122  virginica         2.0
+## 123  virginica         2.0
+## 124  virginica         1.8
+## 125  virginica         2.1
+## 126  virginica         1.8
+## 127  virginica         1.8
+## 128  virginica         1.8
+## 129  virginica         2.1
+## 130  virginica         1.6
+## 131  virginica         1.9
+## 132  virginica         2.0
+## 133  virginica         2.2
+## 134  virginica         1.5
+## 135  virginica         1.4
+## 136  virginica         2.3
+## 137  virginica         2.4
+## 138  virginica         1.8
+## 139  virginica         1.8
+## 140  virginica         2.1
+## 141  virginica         2.4
+## 142  virginica         2.3
+## 143  virginica         1.9
+## 144  virginica         2.3
+## 145  virginica         2.5
+## 146  virginica         2.3
+## 147  virginica         1.9
+## 148  virginica         2.0
+## 149  virginica         2.3
+## 150  virginica         1.8
+```
+
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Quasiquotation: ...-quote-unquote-quote...
+
+In the last try we had:
+
+
+```r
+my_select &lt;- function(data, ...) {
+* cols &lt;- rlang::enexprs(...)                      # handle the "weirdness"
+* cols_char &lt;- as.vector(cols, mode = "character") # unquote the arguments
+* idx &lt;- match(cols_char, names(data))             # do regular R things
+  return(
+    data[, idx, drop = FALSE]
+  )
+}
+```
+
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Variables, quoted, unquoted
+
+
+```r
+col_name &lt;- "species"
+```
+
+.pull-left[
+
+```r
+penguins[, c(col_name, "island", "year")]
+```
+
+```
+## # A tibble: 344 x 3
+##    species island     year
+##    &lt;fct&gt;   &lt;fct&gt;     &lt;int&gt;
+##  1 Adelie  Torgersen  2007
+##  2 Adelie  Torgersen  2007
+##  3 Adelie  Torgersen  2007
+##  4 Adelie  Torgersen  2007
+##  5 Adelie  Torgersen  2007
+##  6 Adelie  Torgersen  2007
+##  7 Adelie  Torgersen  2007
+##  8 Adelie  Torgersen  2007
+##  9 Adelie  Torgersen  2007
+## 10 Adelie  Torgersen  2007
+## # ... with 334 more rows
+```
+]
+
+.pull-right[
+
+```r
+penguins %&gt;%
+  dplyr::select(col_name, island, year)
+```
+
+```
+## Note: Using an external vector in selections is ambiguous.
+## i Use `all_of(col_name)` instead of `col_name` to silence this message.
+## i See &lt;https://tidyselect.r-lib.org/reference/faq-external-vector.html&gt;.
+## This message is displayed once per session.
+```
+
+```
+## # A tibble: 344 x 3
+##    species island     year
+##    &lt;fct&gt;   &lt;fct&gt;     &lt;int&gt;
+##  1 Adelie  Torgersen  2007
+##  2 Adelie  Torgersen  2007
+##  3 Adelie  Torgersen  2007
+##  4 Adelie  Torgersen  2007
+##  5 Adelie  Torgersen  2007
+##  6 Adelie  Torgersen  2007
+##  7 Adelie  Torgersen  2007
+##  8 Adelie  Torgersen  2007
+##  9 Adelie  Torgersen  2007
+## 10 Adelie  Torgersen  2007
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Variables, quoted, unquoted: `my_select`
+
+.pull-left[
+Subsets quoted variables
+
+```r
+my_select(penguins, island, year)
+```
+
+```
+## # A tibble: 344 x 2
+##    island     year
+##    &lt;fct&gt;     &lt;int&gt;
+##  1 Torgersen  2007
+##  2 Torgersen  2007
+##  3 Torgersen  2007
+##  4 Torgersen  2007
+##  5 Torgersen  2007
+##  6 Torgersen  2007
+##  7 Torgersen  2007
+##  8 Torgersen  2007
+##  9 Torgersen  2007
+## 10 Torgersen  2007
+## # ... with 334 more rows
+```
+]
+
+Does not work for unquoted variables.
+
+We want `col_name` to be `species`
+
+```r
+my_select(penguins, col_name, island, year)
+```
+
+```
+## Error: Can't use NA as column index with `[` at position 1.
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# The problem
+
+Need a way to treat the variable as the variable not as the quoted term
+
+### That is...
+
+- Want to unquote `col_name` since the input is automatically quoted using `enexprs`
+- Want to replace `col_name` with `species`
+
+### Solution
+
+For a single variable we use `!!col_name` to unquote `col_name`
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# bang-bang `!!`
+
+
+```r
+col_name &lt;- "species"
+```
+
+
+.pull-left[
+
+```r
+penguins %&gt;%
+  my_select("island", "year")
+```
+
+```
+## # A tibble: 344 x 2
+##    island     year
+##    &lt;fct&gt;     &lt;int&gt;
+##  1 Torgersen  2007
+##  2 Torgersen  2007
+##  3 Torgersen  2007
+##  4 Torgersen  2007
+##  5 Torgersen  2007
+##  6 Torgersen  2007
+##  7 Torgersen  2007
+##  8 Torgersen  2007
+##  9 Torgersen  2007
+## 10 Torgersen  2007
+## # ... with 334 more rows
+```
+]
+
+.pull-right[
+
+```r
+penguins %&gt;%
+  my_select(!!col_name, island, "year")
+```
+
+```
+## # A tibble: 344 x 3
+##    species island     year
+##    &lt;fct&gt;   &lt;fct&gt;     &lt;int&gt;
+##  1 Adelie  Torgersen  2007
+##  2 Adelie  Torgersen  2007
+##  3 Adelie  Torgersen  2007
+##  4 Adelie  Torgersen  2007
+##  5 Adelie  Torgersen  2007
+##  6 Adelie  Torgersen  2007
+##  7 Adelie  Torgersen  2007
+##  8 Adelie  Torgersen  2007
+##  9 Adelie  Torgersen  2007
+## 10 Adelie  Torgersen  2007
+## # ... with 334 more rows
+```
+
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# How to know if a function quotes inputs?
+
+If you pass in the arguments into the function and it works
+
+.pull-left[
+
+```r
+my_select(penguins, island) %&gt;% head(3)
+```
+
+```
+## # A tibble: 3 x 1
+##   island   
+##   &lt;fct&gt;    
+## 1 Torgersen
+## 2 Torgersen
+## 3 Torgersen
+```
+]
+
+.pull-right[
+
+```r
+library(rlang)
+```
+]
+
+but if you pass the argument outside the function and it fails
+
+
+```r
+island
+```
+
+```
+## Error in eval(expr, envir, enclos): object 'island' not found
+```
+
+### `!!` unquoting: selective evalutation on parts of a quoted expression
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# !!! is !! for ... 
+
+.center[
+![](./figs/bigbang-bang_bang_bang.gif)&lt;!-- --&gt;
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+???
+
+Similar to "unpacking" in Python (`*args`, `**kwargs`)
+
+---
+
+# !!!
+
+.pull-left[
+
+```r
+cols &lt;- exprs(species, island, year)
+cols
+```
+
+```
+## [[1]]
+## species
+## 
+## [[2]]
+## island
+## 
+## [[3]]
+## year
+```
+
+
+```r
+class(cols)
+```
+
+```
+## [1] "list"
+```
+
+]
+
+.pull-right[
+
+```r
+my_select(penguins, !!!cols)
+```
+
+```
+## # A tibble: 344 x 3
+##    species island     year
+##    &lt;fct&gt;   &lt;fct&gt;     &lt;int&gt;
+##  1 Adelie  Torgersen  2007
+##  2 Adelie  Torgersen  2007
+##  3 Adelie  Torgersen  2007
+##  4 Adelie  Torgersen  2007
+##  5 Adelie  Torgersen  2007
+##  6 Adelie  Torgersen  2007
+##  7 Adelie  Torgersen  2007
+##  8 Adelie  Torgersen  2007
+##  9 Adelie  Torgersen  2007
+## 10 Adelie  Torgersen  2007
+## # ... with 334 more rows
+```
+]
+
+
+```r
+my_select(penguins, cols)
+```
+
+```
+## Error: Can't use NA as column index with `[` at position 1.
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# {`dplyr`} has one more check
+
+
+```r
+col_name &lt;- "species"
+```
+
+
+.pull-left[
+Bare variable name
+
+
+```r
+penguins %&gt;%
+  dplyr::select(col_name, island, year)
+```
+
+```
+## # A tibble: 344 x 3
+##    species island     year
+##    &lt;fct&gt;   &lt;fct&gt;     &lt;int&gt;
+##  1 Adelie  Torgersen  2007
+##  2 Adelie  Torgersen  2007
+##  3 Adelie  Torgersen  2007
+##  4 Adelie  Torgersen  2007
+##  5 Adelie  Torgersen  2007
+##  6 Adelie  Torgersen  2007
+##  7 Adelie  Torgersen  2007
+##  8 Adelie  Torgersen  2007
+##  9 Adelie  Torgersen  2007
+## 10 Adelie  Torgersen  2007
+## # ... with 334 more rows
+```
+
+]
+.pull-right[
+Using `!!` to unquote the variable name
+
+
+```r
+penguins %&gt;%
+  dplyr::select(!!col_name, island, year)
+```
+
+```
+## # A tibble: 344 x 3
+##    species island     year
+##    &lt;fct&gt;   &lt;fct&gt;     &lt;int&gt;
+##  1 Adelie  Torgersen  2007
+##  2 Adelie  Torgersen  2007
+##  3 Adelie  Torgersen  2007
+##  4 Adelie  Torgersen  2007
+##  5 Adelie  Torgersen  2007
+##  6 Adelie  Torgersen  2007
+##  7 Adelie  Torgersen  2007
+##  8 Adelie  Torgersen  2007
+##  9 Adelie  Torgersen  2007
+## 10 Adelie  Torgersen  2007
+## # ... with 334 more rows
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+
+class: center, middle, inverse
+
+# Quosures = quote + closure
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Closure?!
+
+.pull-left[
+![](./figs/twitter-closure.webp)&lt;!-- --&gt;
+]
+
+
+
+```r
+df[1]
+```
+
+```
+## Error in df[1]: object of type 'closure' is not subsettable
+```
+
+&lt;hr&gt;
+
+`df()` is actually a function in `stats::df()`. You can't subset a function.
+
+- Closure = "thing" (e.g., a function, expression) + environment
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Environments
+
+.pull-left[
+
+```r
+e &lt;- new.env()
+e$x &lt;- 3
+```
+
+
+```r
+e$x
+```
+
+```
+## [1] 3
+```
+
+
+```r
+x
+```
+
+```
+## Error in eval(expr, envir, enclos): object 'x' not found
+```
+]
+.pull-right[
+
+```r
+eval(quote(3 + x))
+```
+
+```
+## Error in eval(quote(3 + x)): object 'x' not found
+```
+
+
+```r
+eval(quote(3 + x), envir = e)
+```
+
+```
+## [1] 6
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+---
+
+# Formulas aren't just for models
+
+.pull-left[
+
+```r
+~ 3 + 3
+```
+
+```
+## ~3 + 3
+```
+
+
+```r
+form &lt;- ~ 3 + 3
+form
+```
+
+```
+## ~3 + 3
+```
+
+
+```r
+attributes(form)
+```
+
+```
+## $class
+## [1] "formula"
+## 
+## $.Environment
+## &lt;environment: R_GlobalEnv&gt;
+```
+]
+
+.pull-righ[
+Extract parts of the formula
+
+
+```r
+form[[1]]
+```
+
+```
+## `~`
+```
+
+
+```r
+form[[2]]
+```
+
+```
+## 3 + 3
+```
+
+Evaluate the expression of he formula
+
+
+```r
+eval(form[[2]])
+```
+
+```
+## [1] 6
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Formulas = expression + environment
+
+.pull-left[
+
+```r
+form &lt;- ~ 3 + x
+form[[1]]
+```
+
+```
+## `~`
+```
+
+
+```r
+form[[2]]
+```
+
+```
+## 3 + x
+```
+
+
+```r
+environment(form)
+```
+
+```
+## &lt;environment: R_GlobalEnv&gt;
+```
+]
+
+.pull-right[
+
+```r
+e &lt;- new.env()
+e$x &lt;- 10
+*environment(form) &lt;- e
+```
+
+
+```r
+eval(expr = form[[2]],
+*    envir = environment(form))
+```
+
+```
+## [1] 13
+```
+
+
+```r
+eval(expr = form[[2]]) # no x in .GlobalEnv
+```
+
+```
+## Error in eval(expr = form[[2]]): object 'x' not found
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Quosure = expression + environment
+
+.pull-left[
+- We can program with quosures easier than  `~`
+  - Allows quasiquotation
+  - User facing: `~`
+  - Developer facing: quosures
+
+
+```r
+form &lt;- ~ 3 + x
+e &lt;- rlang::env(x = 10)
+environment(form) &lt;- e
+```
+
+
+```r
+eval(expr = form[[2]],
+     envir = environment(form))
+```
+
+```
+## [1] 13
+```
+]
+.pull-right[
+
+```r
+q &lt;- rlang::new_quosure(
+  expr = rlang::expr(3 + x),
+  env = e)
+```
+
+
+```r
+rlang::eval_tidy(q) # uses the quosure env
+```
+
+```
+## [1] 13
+```
+
+&lt;hr&gt;
+
+Quosures are subclass of formulas
+
+
+```r
+class(q) # subclass of formula
+```
+
+```
+## [1] "quosure" "formula"
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Quosures in practice
+
+- In practice we use `enquo()` and `enquos()` within a function definition
+  - Remember the `en-` prefix for "**en**riched" which does the quoting from function arguments
+- `quo()`, `quos()`, and `new_quosure()` exist for completeness
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+class: center, middle, inverse
+
+# Data Masks
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Data mask
+
+- An object (e.g., usually a dataframe, but can also be a list) where the expression goes to look for values
+- Data mask values **superceed** values in the environment
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# Quosure + Data Mask example
+
+.pull-left[
+
+```r
+q1 &lt;- rlang::new_quosure(rlang::expr(x * y),
+                         rlang::env(x = 100))
+q1
+```
+
+```
+## &lt;quosure&gt;
+## expr: ^x * y
+## env:  000000001DE04E60
+```
+
+
+```r
+df &lt;- data.frame(y = 1:5)
+df
+```
+
+```
+##   y
+## 1 1
+## 2 2
+## 3 3
+## 4 4
+## 5 5
+```
+]
+
+.pull-right[
+
+```r
+rlang::eval_tidy(expr = q1,
+                 data = df)
+```
+
+```
+## [1] 100 200 300 400 500
+```
+
+```r
+# uses the quosure's env
+```
+
+&lt;hr&gt;
+
+
+```r
+x * y
+```
+
+```
+## Error in eval(expr, envir, enclos): object 'x' not found
+```
+
+
+```r
+100 * y
+```
+
+```
+## Error in eval(expr, envir, enclos): object 'y' not found
+```
+
+
+```r
+100 * df$y
+```
+
+```
+## [1] 100 200 300 400 500
+```
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+#  `my_select`: previous try
+
+
+```r
+col_name &lt;- "species"
+```
+
+
+```r
+my_select &lt;- function(data, ...) {
+  cols &lt;- rlang::enexprs(...)                      # handle the "weirdness"
+  cols_char &lt;- as.vector(cols, mode = "character") # unquote the arguments
+  idx &lt;- match(cols_char, names(data))             # find index positions
+  return(
+    data[, idx, drop = FALSE]                      # regular R things: subset on index
+  )
+}
+```
+
+
+```r
+my_select(penguins, col_name, year, "island")
+```
+
+```
+## Error: Can't use NA as column index with `[` at position 1.
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+#  `my_select`:try 7 quosures + data mask
+
+
+```r
+my_select &lt;- function(data, ...) {
+  cols &lt;- rlang::enquos(...)                               # handle the "weirdness"
+  
+* vars &lt;- as.list(set_names(seq_along(data), names(data))) # list of columns and their index
+* col_char_num &lt;- purrr::map(cols, rlang::eval_tidy, vars) # tidy evaluate the user inputs
+  idx &lt;- purrr::map_int(col_char_num,                      # get index based on user input cols
+                        function(x){ifelse(is.character(x),
+                                           vars[[x]],
+                                           x)}) 
+  return(
+    data[, idx, drop = FALSE]                              # regular R things: subset on index
+  )
+}
+```
+
+
+```r
+my_select(penguins, col_name, year, "island")
+```
+
+```
+## # A tibble: 344 x 3
+##    species  year island   
+##    &lt;fct&gt;   &lt;int&gt; &lt;fct&gt;    
+##  1 Adelie   2007 Torgersen
+##  2 Adelie   2007 Torgersen
+##  3 Adelie   2007 Torgersen
+##  4 Adelie   2007 Torgersen
+##  5 Adelie   2007 Torgersen
+##  6 Adelie   2007 Torgersen
+##  7 Adelie   2007 Torgersen
+##  8 Adelie   2007 Torgersen
+##  9 Adelie   2007 Torgersen
+## 10 Adelie   2007 Torgersen
+## # ... with 334 more rows
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# In general...
+
+`dplyr::select()`, `dplyr::arrange()`, { `tidyselect` }
+
+- Getting the index position of the columns
+
+
+```r
+idx &lt;- c(1, 3, 2, 6, 1)
+```
+
+- Subsetting using base R on those index positions
+
+
+```r
+penguins[, idx, drop = FALSE]
+```
+
+```
+## # A tibble: 344 x 5
+##    species bill_length_mm island    body_mass_g species
+##    &lt;fct&gt;            &lt;dbl&gt; &lt;fct&gt;           &lt;int&gt; &lt;fct&gt;  
+##  1 Adelie            39.1 Torgersen        3750 Adelie 
+##  2 Adelie            39.5 Torgersen        3800 Adelie 
+##  3 Adelie            40.3 Torgersen        3250 Adelie 
+##  4 Adelie            NA   Torgersen          NA Adelie 
+##  5 Adelie            36.7 Torgersen        3450 Adelie 
+##  6 Adelie            39.3 Torgersen        3650 Adelie 
+##  7 Adelie            38.9 Torgersen        3625 Adelie 
+##  8 Adelie            39.2 Torgersen        4675 Adelie 
+##  9 Adelie            34.1 Torgersen        3475 Adelie 
+## 10 Adelie            42   Torgersen        4250 Adelie 
+## # ... with 334 more rows
+```
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+class: center, middle, inverse
+
+# What I didn't cover
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+class: center, middle, inverse
+
+# A lot...
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# For example...
+
+- `:=` "colon equal", let's you quote the left hand side of an equal sign
+- `.data` and `.env` pronouns in a data mask
+  - https://adv-r.hadley.nz/evaluation.html#pronouns
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+class: center, middle, inverse
+
+# tl;dr
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# User: string; Function: string
+
+- What we are used to
+- Use the string version or string parameter
+
+.pull-left[
+
+```r
+my_func &lt;- function(data, col) {
+  return(
+    ggplot(data = data,
+*          aes_string(x = col)) +
+      geom_bar()
+  )
+}
+```
+]
+
+.pull-right[
+
+```r
+my_func(penguins, "year")
+```
+
+![](slides_files/figure-html/unnamed-chunk-118-1.png)&lt;!-- --&gt;
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# User: string; Function: quote
+
+1. Convert to expression
+  - `base::parse()`
+  - `rlang::parse_expr()`, `rlang::parse_exprs()`, `rlang::parse_quo()`, `rlang::parse_quos()`
+2. Unquote expression
+
+.pull-left[
+
+
+```r
+my_func &lt;- function(data, col) {
+* ex &lt;- rlang::parse_expr(col)
+  return(
+    ggplot(data = data,
+*          aes(x = !!ex)) +
+      geom_bar()
+  )
+}
+```
+]
+
+.pull-right[
+
+
+```r
+my_func(penguins, "year")
+```
+
+![](slides_files/figure-html/unnamed-chunk-120-1.png)&lt;!-- --&gt;
+
+
+
+```r
+var &lt;- "year"
+my_func(penguins, var)
+```
+
+![](slides_files/figure-html/unnamed-chunk-121-1.png)&lt;!-- --&gt;
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# User: quote; Function: string
+
+- Capture expression: `rlang::enexpr()`
+- Convert to string: `rlang::as_string()`
+
+.pull-left[
+
+```r
+my_func &lt;- function(data, col) {
+* q &lt;- rlang::enexpr(col)
+* s &lt;- rlang::as_string(q)
+  return(
+    ggplot(data = data,
+*          aes_string(x = s)) +
+      geom_bar()
+  )
+}
+```
+]
+
+.pull-right[
+
+```r
+my_func(penguins, year)
+```
+
+![](slides_files/figure-html/unnamed-chunk-123-1.png)&lt;!-- --&gt;
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+# User: quote; Function: quote
+
+- `rlang::enquo()` + `!!`
+- `{{ }}`
+
+.pull-left[
+
+
+```r
+my_func &lt;- function(data, col) {
+* col_quo &lt;- rlang::enquo(col)
+  return(
+    ggplot(data = data,
+*          aes(x = !!col_quo )) +
+      geom_bar()
+  )
+}
+```
+
+
+```r
+my_func &lt;- function(data, col) {
+  return(
+    ggplot(data = data,
+*          aes(x = {{col}} )) +
+      geom_bar()
+  )
+}
+```
+]
+
+.pull-right[
+
+```r
+my_func(penguins, year)
+```
+
+![](slides_files/figure-html/unnamed-chunk-126-1.png)&lt;!-- --&gt;
+]
+
+&lt;div class="my-footer"&gt;&lt;span&gt;https://github.com/chendaniely/2021-02-09-bls-tidyeval&lt;/span&gt;&lt;/div&gt; 
+
+---
+
+class: center, middle, inverse
+
+# Thanks!
+
+@chendaniely
+
+Read, read, and re-read:: https://adv-r.hadley.nz/metaprogramming.html
+
+Slides: https://github.com/chendaniely/2021-02-09-bls-tidyeval
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:9"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
